@@ -395,8 +395,9 @@ pub fn start_karabiner() {
 }
 
 #[tauri::command]
-pub fn quit_app(app: AppHandle, state: State<'_, AppState>) {
-    // Remove our injected rebinds so nothing lingers after we're gone.
-    let _ = state.engine.clear();
+pub fn quit_app(app: AppHandle) {
+    // Leave the injected rebinds in place — they're Remote-Desktop-scoped, so
+    // they're harmless elsewhere, keep working while we're gone, and (crucially)
+    // clearing here could strand a modifier that's mid-press. Disarm removes them.
     app.exit(0);
 }

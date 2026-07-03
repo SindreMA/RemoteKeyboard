@@ -74,18 +74,20 @@ impl AppState {
         rt.engine = self.engine.status();
     }
 
-    /// Push the current state to the engine at launch (inject rules if armed).
+    /// Push the current state to the engine at launch. Forces a clean Karabiner
+    /// reload so any key left stuck by a previous session is released.
     pub fn startup(&self) {
-        self.sync_engine();
+        self.sync_engine(true);
         self.refresh_engine();
     }
 
     /// Best-effort: hand the effective profile to the engine (or clear it when
-    /// disarmed). Errors are swallowed here — surfaced via engine status.
-    fn sync_engine(&self) {
+    /// disarmed). `force` bypasses the no-op guard. Errors are swallowed here —
+    /// surfaced via engine status.
+    fn sync_engine(&self, force: bool) {
         let armed = self.config.lock().unwrap().armed;
         let result = match (armed, self.effective_profile()) {
-            (true, Some(p)) => self.engine.apply(&p),
+            (true, Some(p)) => self.engine.apply(&p, force),
             // Disarmed, or armed with no resolvable profile → clear (never leave
             // stale rules injected, and don't misreport "live").
             _ => self.engine.clear(),
@@ -98,7 +100,7 @@ impl AppState {
 /// Call this after any mutation.
 pub fn commit(app: &AppHandle, state: &AppState) {
     state.persist();
-    state.sync_engine();
+    state.sync_engine(false);
     state.refresh_engine();
     let _ = app.emit("snapshot", state.snapshot());
 }

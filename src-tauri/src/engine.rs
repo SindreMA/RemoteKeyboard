@@ -30,9 +30,11 @@ const RDP_BUNDLE_RE: &str = "^com\\.microsoft\\.rdc";
 
 pub trait RebindEngine: Send + Sync {
     fn status(&self) -> EngineStatus;
-    /// Make `profile` the live rebind set.
-    fn apply(&self, profile: &Profile) -> Result<(), String>;
-    /// Remove all our rebinds (disarm / quit / out of scope).
+    /// Make `profile` the live rebind set. `force` bypasses the no-op guard and
+    /// always rewrites (triggering a Karabiner reload) — used at launch to reset
+    /// state and release any stuck keys from a previous session.
+    fn apply(&self, profile: &Profile, force: bool) -> Result<(), String>;
+    /// Remove all our rebinds (disarm).
     fn clear(&self) -> Result<(), String>;
 }
 
@@ -66,7 +68,7 @@ impl RebindEngine for NoopEngine {
             },
         }
     }
-    fn apply(&self, _profile: &Profile) -> Result<(), String> {
+    fn apply(&self, _profile: &Profile, _force: bool) -> Result<(), String> {
         Ok(())
     }
     fn clear(&self) -> Result<(), String> {
@@ -151,7 +153,7 @@ impl RebindEngine for KarabinerEngine {
         }
     }
 
-    fn apply(&self, profile: &Profile) -> Result<(), String> {
+    fn apply(&self, profile: &Profile, force: bool) -> Result<(), String> {
         let res = (|| {
             if !self.config_path.exists() {
                 return Err(
@@ -176,12 +178,13 @@ impl RebindEngine for KarabinerEngine {
 
             // No-op guard: skip the write (and Karabiner reload) if our rules are
             // already exactly `want` in the selected profile and nowhere else.
+            // `force` bypasses it to guarantee a clean reload (stuck-key recovery).
             let current_here: Vec<Value> = ours(&profiles[idx]);
             let others_have_ours = profiles
                 .iter()
                 .enumerate()
                 .any(|(i, p)| i != idx && has_ours(p));
-            if current_here == want && !others_have_ours {
+            if !force && current_here == want && !others_have_ours {
                 return Ok(());
             }
 

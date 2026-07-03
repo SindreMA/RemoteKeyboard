@@ -30,7 +30,7 @@
         "label": "popover",
         "title": "RemoteKeyboard",
         "width": 332,
-        "height": 548,
+        "height": 560,
         "visible": false,
         "decorations": false,
         "transparent": true,

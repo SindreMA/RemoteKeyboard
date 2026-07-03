@@ -1,12 +1,36 @@
 // Surface 02 — the menubar popover. The quick-control surface: arm toggle,
 // mode + status, profile switcher, pin/debug, and footer actions.
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import type { Snapshot } from "../types";
 import { backend } from "../lib/api";
 import { Switch, SwitchSmall } from "../components/Toggle";
 import { ModeChip, modeWhere } from "../components/ModeChip";
 import { StatusDot } from "../components/StatusDot";
+
+const POPOVER_WIDTH = 332;
+
+/** Shrink the popover window to fit its content, updating as content changes. */
+function usePopoverAutosize(ref: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !("__TAURI_INTERNALS__" in window)) return;
+    let ro: ResizeObserver | undefined;
+    import("@tauri-apps/api/window")
+      .then((m) => {
+        const win = m.getCurrentWindow();
+        const apply = () => {
+          const h = Math.ceil(el.getBoundingClientRect().height);
+          if (h > 0) win.setSize(new m.LogicalSize(POPOVER_WIDTH, h)).catch(() => {});
+        };
+        apply();
+        ro = new ResizeObserver(apply);
+        ro.observe(el);
+      })
+      .catch(() => {});
+    return () => ro?.disconnect();
+  }, [ref]);
+}
 
 const row: CSSProperties = {
   display: "flex",
@@ -57,10 +81,13 @@ export function Popover({ snap }: { snap: Snapshot }) {
     ? `Client: ${runtime.frontmostName} · all keystrokes routed`
     : `Profile: ${active?.name ?? "—"} · all keystrokes routed`;
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  usePopoverAutosize(cardRef);
+
   return (
     <div
+      ref={cardRef}
       style={{
-        height: "100%",
         background: "var(--pop)",
         backdropFilter: "blur(40px) saturate(1.4)",
         WebkitBackdropFilter: "blur(40px) saturate(1.4)",

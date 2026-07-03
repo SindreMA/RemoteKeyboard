@@ -1,0 +1,67 @@
+name: Release
+
+# Every push to main builds the macOS app and publishes a GitHub Release whose
+# tag/version is a UTC timestamp. To release from every branch instead, delete
+# the `branches:` filter below. `workflow_dispatch` lets you run it by hand too.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Required so the workflow can create the tag + release.
+permissions:
+  contents: write
+
+# Don't let two releases race; let an in-flight one finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute time-based version tag
+        id: ver
+        run: echo "tag=v$(date -u +'%Y.%m.%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust (with both macOS arches for a universal build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build app and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.ver.outputs.tag }}
+          releaseName: RemoteKeyboard ${{ steps.ver.outputs.tag }}
+          releaseBody: |
+            Automated build from ${{ github.sha }}.
+
+            **Unsigned build** — on first launch, right-click the app and choose *Open*
+            (or allow it under System Settings → Privacy & Security). Requires
+            Karabiner-Elements to be installed for rebinds to fire.
+          releaseDraft: false
+          prerelease: false
+          # Universal binary (Apple Silicon + Intel). Drop this line to build only
+          # the runner's native arch.
+          args: --target universal-apple-darwin

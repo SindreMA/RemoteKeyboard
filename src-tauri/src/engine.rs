@@ -33,7 +33,7 @@ pub trait RebindEngine: Send + Sync {
     /// Make `profile` the live rebind set. `force` bypasses the no-op guard and
     /// always rewrites (triggering a Karabiner reload) — used at launch to reset
     /// state and release any stuck keys from a previous session.
-    fn apply(&self, profile: &Profile, force: bool) -> Result<(), String>;
+    fn apply(&self, profile: &Profile, force: bool, scoped: bool) -> Result<(), String>;
     /// Remove all our rebinds (disarm).
     fn clear(&self) -> Result<(), String>;
 }
@@ -68,7 +68,7 @@ impl RebindEngine for NoopEngine {
             },
         }
     }
-    fn apply(&self, _profile: &Profile, _force: bool) -> Result<(), String> {
+    fn apply(&self, _profile: &Profile, _force: bool, _scoped: bool) -> Result<(), String> {
         Ok(())
     }
     fn clear(&self) -> Result<(), String> {
@@ -95,12 +95,12 @@ impl KarabinerEngine {
 
     /// The tagged, RDP-scoped complex-modification rules for one profile.
     /// Public + pure for unit tests / previews.
-    pub fn build_rules(profile: &Profile) -> Vec<Value> {
+    pub fn build_rules(profile: &Profile, scoped: bool) -> Vec<Value> {
         profile
             .mappings
             .iter()
             .filter(|m| !m.input.is_empty())
-            .filter_map(manipulator_rule)
+            .filter_map(|m| manipulator_rule(m, scoped))
             .collect()
     }
 
@@ -153,7 +153,7 @@ impl RebindEngine for KarabinerEngine {
         }
     }
 
-    fn apply(&self, profile: &Profile, force: bool) -> Result<(), String> {
+    fn apply(&self, profile: &Profile, force: bool, scoped: bool) -> Result<(), String> {
         let res = (|| {
             if !self.config_path.exists() {
                 return Err(
@@ -162,7 +162,7 @@ impl RebindEngine for KarabinerEngine {
                 );
             }
             let mut root = self.read_config()?;
-            let want = Self::build_rules(profile);
+            let want = Self::build_rules(profile, scoped);
 
             let profiles = root
                 .get_mut("profiles")
@@ -291,8 +291,8 @@ fn rules_mut(profile: &mut Value) -> Result<&mut Vec<Value>, String> {
 // ---------------------------------------------------------------------------
 
 /// The single tagged rule (possibly multiple manipulators) for one mapping.
-fn manipulator_rule(m: &Mapping) -> Option<Value> {
-    let manipulators = manipulators_for(m);
+fn manipulator_rule(m: &Mapping, scoped: bool) -> Option<Value> {
+    let manipulators = manipulators_for(m, scoped);
     if manipulators.is_empty() {
         return None;
     }
@@ -305,7 +305,7 @@ fn manipulator_rule(m: &Mapping) -> Option<Value> {
 /// Build the `from → to` manipulators for a mapping. A modifier-only input maps
 /// **both physical sides** (left+right), side-preserved, so pressing left OR
 /// right Command triggers it.
-fn manipulators_for(m: &Mapping) -> Vec<Value> {
+fn manipulators_for(m: &Mapping, scoped: bool) -> Vec<Value> {
     let to = match to_spec(m) {
         Some(t) => t,
         None => return vec![],
@@ -320,7 +320,7 @@ fn manipulators_for(m: &Mapping) -> Vec<Value> {
             "key_code": key,
             "modifiers": { "mandatory": mandatory, "optional": ["caps_lock"] },
         });
-        return vec![manipulator(from, resolve_to(&to, 0))];
+        return vec![manipulator(from, resolve_to(&to, 0), scoped)];
     }
 
     if in_mods.is_empty() {
@@ -338,7 +338,7 @@ fn manipulators_for(m: &Mapping) -> Vec<Value> {
                     "key_code": side,
                     "modifiers": { "mandatory": [], "optional": ["any"] },
                 });
-                manipulator(from, resolve_to(&to, i))
+                manipulator(from, resolve_to(&to, i), scoped)
             })
             .collect();
     }
@@ -356,18 +356,22 @@ fn manipulators_for(m: &Mapping) -> Vec<Value> {
         "key_code": key,
         "modifiers": { "mandatory": mandatory, "optional": ["any"] },
     });
-    vec![manipulator(from, resolve_to(&to, 0))]
+    vec![manipulator(from, resolve_to(&to, 0), scoped)]
 }
 
-fn manipulator(from: Value, to: Value) -> Value {
-    json!({
-        "type": "basic",
-        "from": from,
-        "to": to,
-        "conditions": [
-            { "type": "frontmost_application_if", "bundle_identifiers": [RDP_BUNDLE_RE] }
-        ],
-    })
+fn manipulator(from: Value, to: Value, scoped: bool) -> Value {
+    let mut m = json!({ "type": "basic", "from": from, "to": to });
+    if scoped {
+        // Both must hold: the client is frontmost (fail-safe — a stale variable
+        // can never leak the rebind outside the app) AND a live *session window*
+        // is focused (set by our own window watcher, since Karabiner can't match
+        // window titles).
+        m["conditions"] = json!([
+            { "type": "frontmost_application_if", "bundle_identifiers": [RDP_BUNDLE_RE] },
+            { "type": "variable_if", "name": crate::scope::SESSION_VAR, "value": 1 }
+        ]);
+    }
+    m
 }
 
 /// How the output is emitted. `ModifierSides` pairs left↔left / right↔right with
@@ -595,7 +599,7 @@ mod tests {
         let rules = KarabinerEngine::build_rules(&profile(vec![
             keys("1", &["Meta"], &["Alt"]),
             keys("2", &["Alt"], &["Meta"]),
-        ]));
+        ]), true);
         assert_eq!(rules.len(), 2);
         let m = rules[0]["manipulators"].as_array().unwrap();
         assert_eq!(m.len(), 2, "modifier-only remap should cover left + right");
@@ -613,7 +617,7 @@ mod tests {
 
     #[test]
     fn combo_uses_generic_mandatory_modifier() {
-        let rules = KarabinerEngine::build_rules(&profile(vec![keys("1", &["Meta", "W"], &["Control", "W"])]));
+        let rules = KarabinerEngine::build_rules(&profile(vec![keys("1", &["Meta", "W"], &["Control", "W"])]), true);
         let m = &rules[0]["manipulators"][0];
         assert_eq!(m["from"]["key_code"], "w");
         assert_eq!(m["from"]["modifiers"]["mandatory"][0], "command"); // either side
@@ -623,6 +627,6 @@ mod tests {
 
     #[test]
     fn empty_input_yields_no_rule() {
-        assert!(KarabinerEngine::build_rules(&profile(vec![keys("1", &[], &["Control"])])).is_empty());
+        assert!(KarabinerEngine::build_rules(&profile(vec![keys("1", &[], &["Control"])]), true).is_empty());
     }
 }

@@ -23,6 +23,7 @@ export interface Backend {
   setMode(mode: Mode): Promise<void>;
   setOnboarded(onboarded: boolean): Promise<void>;
   setUniversalFallback(enabled: boolean): Promise<void>;
+  setIgnoreScope(enabled: boolean): Promise<void>;
   setActiveProfile(id: string): Promise<void>;
   setPinned(id: string | null): Promise<void>;
   addProfile(name: string): Promise<string>;
@@ -75,6 +76,7 @@ function makeTauriBackend(): Backend {
     setMode: (mode) => cmd("set_mode", { mode }),
     setOnboarded: (onboarded) => cmd("set_onboarded", { onboarded }),
     setUniversalFallback: (enabled) => cmd("set_universal_fallback", { enabled }),
+    setIgnoreScope: (enabled) => cmd("set_ignore_scope", { enabled }),
     setActiveProfile: (id) => cmd("set_active_profile", { id }),
     setPinned: (id) => cmd("set_pinned", { id }),
     addProfile: (name) => cmd<string>("add_profile", { name }),
@@ -170,6 +172,7 @@ function defaultConfig(): Config {
     activeProfileId: work.id,
     pinnedProfileId: null,
     universalFallback: true,
+    ignoreScope: false,
     profiles: [universal, work],
     onboarded: PREVIEW_ONBOARDED,
   } as Config;
@@ -189,6 +192,7 @@ function makeMockBackend(): Backend {
       scopeActive: true,
       frontmostBundle: "com.microsoft.rdc.macos",
       frontmostName: "Windows App",
+      windowTitle: "WORK-PC",
       secureInput: false,
       permissions: { accessibility: false, inputMonitoring: false },
       engine: {
@@ -215,6 +219,7 @@ function makeMockBackend(): Backend {
     setMode: async (v) => { snap.config.mode = v; emit(); },
     setOnboarded: async (v) => { snap.config.onboarded = v; emit(); },
     setUniversalFallback: async (v) => { snap.config.universalFallback = v; emit(); },
+    setIgnoreScope: async (v) => { snap.config.ignoreScope = v; emit(); },
     setActiveProfile: async (id) => {
       if (profile(id)) snap.config.activeProfileId = id;
       emit();

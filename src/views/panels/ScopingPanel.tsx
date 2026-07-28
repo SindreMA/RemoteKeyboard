@@ -55,6 +55,45 @@ export function ScopingPanel({ snap, profile }: { snap: Snapshot; profile: Profi
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "20px 22px", minHeight: 0 }}>
+      {config.ignoreScope && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 11,
+            padding: "12px 14px",
+            borderRadius: "var(--winR)",
+            background: "var(--amberSoft)",
+            border: "1px solid var(--amber)",
+            marginBottom: 16,
+          }}
+        >
+          <span style={{ fontSize: 17 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ font: "700 13px/1.3 var(--ui)", color: "var(--amber)" }}>
+              Test mode — rebinds apply EVERYWHERE
+            </div>
+            <div style={{ font: "400 11.5px/1.4 var(--ui)", color: "var(--sub)", marginTop: 2 }}>
+              The Remote Desktop scope is off, so these rebinds affect your whole Mac. Use it to prove the engine
+              works, then turn it back off.
+            </div>
+          </div>
+          <button
+            onClick={() => backend.setIgnoreScope(false)}
+            style={{
+              padding: "7px 13px",
+              borderRadius: 8,
+              border: 0,
+              background: "var(--amber)",
+              color: "#fff",
+              font: "600 12px/1 var(--ui)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Turn off
+          </button>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, marginBottom: 18 }}>
         <div style={{ maxWidth: 470 }}>
           <div style={{ font: "700 16px/1.3 var(--ui)", color: "var(--text)", letterSpacing: "-.2px" }}>
@@ -90,12 +129,25 @@ export function ScopingPanel({ snap, profile }: { snap: Snapshot; profile: Profi
           <div style={{ font: "400 10.5px/1.3 var(--mono)", color: "var(--faint)", marginTop: 6 }}>{frontMeta}</div>
           <div
             style={{
+              font: "400 10.5px/1.3 var(--mono)",
+              color: "var(--faint)",
+              marginTop: 4,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={runtime.windowTitle}
+          >
+            window: {runtime.windowTitle ? `“${runtime.windowTitle}”` : "—"}
+          </div>
+          <div
+            style={{
               font: "600 10.5px/1 var(--ui)",
               color: runtime.scopeActive ? "var(--green)" : "var(--faint)",
               marginTop: 7,
             }}
           >
-            {runtime.scopeActive ? "● Armed" : "○ Out of scope"}
+            {runtime.scopeActive ? "● Armed — session window" : "○ Out of scope"}
           </div>
         </div>
       </div>
@@ -217,6 +269,12 @@ export function ScopingPanel({ snap, profile }: { snap: Snapshot; profile: Profi
             sub="Override auto-matching"
             on={pinned}
             onClick={() => backend.setPinned(pinned ? null : config.activeProfileId)}
+          />
+          <ToggleCard
+            title="Test everywhere"
+            sub="Ignore the Remote Desktop scope"
+            on={config.ignoreScope}
+            onClick={() => backend.setIgnoreScope(!config.ignoreScope)}
           />
           <div style={{ font: "400 10.5px/1.4 var(--ui)", color: "var(--faint)", padding: "0 2px" }}>{scopeNote}</div>
         </div>

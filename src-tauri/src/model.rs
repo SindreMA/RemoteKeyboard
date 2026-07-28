@@ -109,6 +109,10 @@ pub struct Config {
     /// Fall back to the universal profile when no rule matches.
     #[serde(default = "default_true")]
     pub universal_fallback: bool,
+    /// Test mode: drop the "only in Remote Desktop" condition so rebinds apply
+    /// **everywhere**. Useful to prove the engine works; not for daily use.
+    #[serde(default)]
+    pub ignore_scope: bool,
     pub profiles: Vec<Profile>,
 }
 
@@ -162,6 +166,9 @@ pub struct Runtime {
     pub scope_active: bool,
     pub frontmost_bundle: String,
     pub frontmost_name: String,
+    /// Focused window title — distinguishes a live session from the client's
+    /// own connection-center window.
+    pub window_title: String,
     /// Secure Event Input active → rebinds silently pass through.
     pub secure_input: bool,
     pub permissions: Permissions,

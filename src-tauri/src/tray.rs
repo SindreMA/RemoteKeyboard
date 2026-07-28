@@ -25,8 +25,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::window::show_main(app),
-            // Leave rebinds injected on quit (RDP-scoped; disarm removes them).
-            "quit" => app.exit(0),
+            // Leave rebinds injected on quit (RDP-scoped; disarm removes them),
+            // but drop the session flag so a stale "in session" can't linger.
+            "quit" => {
+                crate::scope::set_session_variable(false);
+                app.exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {

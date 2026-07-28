@@ -26,6 +26,7 @@ impl AppState {
             scope_active: false,
             frontmost_bundle: String::new(),
             frontmost_name: "—".into(),
+            window_title: String::new(),
             secure_input: false,
             permissions: crate::permissions::check(),
             engine: engine.status(),
@@ -85,9 +86,12 @@ impl AppState {
     /// disarmed). `force` bypasses the no-op guard. Errors are swallowed here —
     /// surfaced via engine status.
     fn sync_engine(&self, force: bool) {
-        let armed = self.config.lock().unwrap().armed;
+        let (armed, scoped) = {
+            let cfg = self.config.lock().unwrap();
+            (cfg.armed, !cfg.ignore_scope)
+        };
         let result = match (armed, self.effective_profile()) {
-            (true, Some(p)) => self.engine.apply(&p, force),
+            (true, Some(p)) => self.engine.apply(&p, force, scoped),
             // Disarmed, or armed with no resolvable profile → clear (never leave
             // stale rules injected, and don't misreport "live").
             _ => self.engine.clear(),
@@ -158,6 +162,7 @@ pub fn default_config() -> Config {
         active_profile_id: active,
         pinned_profile_id: None,
         universal_fallback: true,
+        ignore_scope: false,
         profiles: vec![universal, work],
     }
 }

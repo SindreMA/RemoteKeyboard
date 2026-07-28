@@ -6,13 +6,52 @@ mod commands;
 mod engine;
 mod model;
 mod permissions;
+mod scope;
 mod store;
 mod tray;
 mod window;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 
 use store::AppState;
+
+/// Poll the focused window and publish "is a remote session focused?" to
+/// Karabiner as a variable. Only pushes to Karabiner when the answer changes.
+fn spawn_session_watcher(handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        let mut last_session: Option<bool> = None;
+        let mut last_seen = (String::new(), String::new());
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            let Some(state) = handle.try_state::<AppState>() else {
+                continue;
+            };
+            let front = scope::frontmost().unwrap_or_default();
+            let in_session = scope::is_session_window(&front);
+
+            let seen = (front.bundle.clone(), front.window_title.clone());
+            let changed = last_session != Some(in_session) || last_seen != seen;
+            if !changed {
+                continue;
+            }
+            last_seen = seen;
+
+            if last_session != Some(in_session) {
+                last_session = Some(in_session);
+                scope::set_session_variable(in_session);
+            }
+
+            {
+                let mut rt = state.runtime.lock().unwrap();
+                rt.frontmost_bundle = front.bundle;
+                rt.frontmost_name = front.app_name;
+                rt.window_title = front.window_title;
+                rt.scope_active = in_session;
+            }
+            let _ = handle.emit("snapshot", state.snapshot());
+        }
+    });
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -31,6 +70,10 @@ pub fn run() {
 
             // Inject the active profile's rebinds into Karabiner at launch.
             app.state::<AppState>().startup();
+
+            // Watch the focused window so rebinds only apply inside a live
+            // remote session (not the client's connection-center window).
+            spawn_session_watcher(app.handle().clone());
 
             // Menubar-only agent by default (no Dock icon).
             #[cfg(target_os = "macos")]
@@ -69,6 +112,7 @@ pub fn run() {
             commands::set_mode,
             commands::set_onboarded,
             commands::set_universal_fallback,
+            commands::set_ignore_scope,
             commands::set_active_profile,
             commands::set_pinned,
             commands::add_profile,

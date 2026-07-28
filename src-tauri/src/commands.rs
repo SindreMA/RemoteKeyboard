@@ -46,6 +46,14 @@ pub fn set_universal_fallback(app: AppHandle, state: State<'_, AppState>, enable
     commit(&app, &state);
 }
 
+/// Test mode: when enabled, rebinds are injected WITHOUT the "only in Remote
+/// Desktop" condition, so they apply everywhere. Proves the engine works.
+#[tauri::command]
+pub fn set_ignore_scope(app: AppHandle, state: State<'_, AppState>, enabled: bool) {
+    state.config.lock().unwrap().ignore_scope = enabled;
+    commit(&app, &state);
+}
+
 #[tauri::command]
 pub fn set_active_profile(app: AppHandle, state: State<'_, AppState>, id: String) {
     {
@@ -275,40 +283,19 @@ pub fn import_config_from(app: AppHandle, state: State<'_, AppState>, path: Stri
 /// poll while the Connection panel is open.
 #[tauri::command]
 pub fn refresh_scope(app: AppHandle, state: State<'_, AppState>) -> Snapshot {
-    #[cfg(target_os = "macos")]
+    let front = crate::scope::frontmost().unwrap_or_default();
     {
-        if let Some((bundle, name)) = frontmost_app() {
-            let active = bundle.starts_with("com.microsoft.rdc");
-            let mut rt = state.runtime.lock().unwrap();
-            rt.frontmost_bundle = bundle;
-            rt.frontmost_name = name;
-            rt.scope_active = active;
-        }
+        let mut rt = state.runtime.lock().unwrap();
+        rt.scope_active = crate::scope::is_session_window(&front);
+        rt.frontmost_bundle = front.bundle;
+        rt.frontmost_name = front.app_name;
+        rt.window_title = front.window_title;
     }
     let snap = state.snapshot();
     let _ = app.emit("snapshot", snap.clone());
     snap
 }
 
-#[cfg(target_os = "macos")]
-fn frontmost_app() -> Option<(String, String)> {
-    let script = r#"tell application "System Events"
-set p to first application process whose frontmost is true
-return (bundle identifier of p) & "|" & (name of p)
-end tell"#;
-    let out = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout);
-    let s = s.trim();
-    let (bundle, name) = s.split_once('|')?;
-    Some((bundle.to_string(), name.to_string()))
-}
 
 #[tauri::command]
 pub fn open_main(app: AppHandle) {
@@ -399,5 +386,7 @@ pub fn quit_app(app: AppHandle) {
     // Leave the injected rebinds in place — they're Remote-Desktop-scoped, so
     // they're harmless elsewhere, keep working while we're gone, and (crucially)
     // clearing here could strand a modifier that's mid-press. Disarm removes them.
+    // But drop the session flag so a stale "in session" can't linger.
+    crate::scope::set_session_variable(false);
     app.exit(0);
 }

@@ -39,6 +39,8 @@ export interface Config {
   activeProfileId: string;
   pinnedProfileId: string | null;
   universalFallback: boolean;
+  /** Test mode: apply rebinds everywhere (drop the Remote-Desktop-only scope). */
+  ignoreScope: boolean;
   profiles: Profile[];
 }
 
@@ -68,6 +70,7 @@ export interface Runtime {
   scopeActive: boolean;
   frontmostBundle: string;
   frontmostName: string;
+  windowTitle: string;
   secureInput: boolean;
   permissions: Permissions;
   engine: EngineStatus;

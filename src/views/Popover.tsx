@@ -118,6 +118,30 @@ export function Popover({ snap }: { snap: Snapshot }) {
         <Switch on={armed} danger={!armed} onClick={() => backend.setArmed(!armed)} />
       </div>
 
+      {config.ignoreScope && (
+        <button
+          onClick={() => backend.setIgnoreScope(false)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            width: "100%",
+            textAlign: "left",
+            padding: "8px 10px",
+            marginBottom: 4,
+            borderRadius: 9,
+            border: "1px solid var(--amber)",
+            background: "var(--amberSoft)",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>⚠️</span>
+          <span style={{ flex: 1, font: "600 11.5px/1.3 var(--ui)", color: "var(--amber)" }}>
+            Test mode — applying everywhere
+          </span>
+          <span style={{ font: "600 11px/1 var(--ui)", color: "var(--amber)" }}>Turn off</span>
+        </button>
+      )}
+
       {blocker && (
         <button
           onClick={() => backend.openMain()}

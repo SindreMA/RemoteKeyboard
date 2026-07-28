@@ -133,7 +133,11 @@ export function MappingsPanel({ snap, profile }: { snap: Snapshot; profile: Prof
       )
     : profile.mappings;
 
-  const scopeChip = isHost ? "Active in remote sessions" : "Active in Remote Desktop";
+  const scopeChip = snap.config.ignoreScope
+    ? "Active everywhere (test)"
+    : isHost
+    ? "Active in remote sessions"
+    : "Active in Remote Desktop";
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
